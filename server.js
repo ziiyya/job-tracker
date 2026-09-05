@@ -1,25 +1,59 @@
-const path = require('path')
 const express = require('express')
-const mongoose = require('mongoose')
-require('dotenv').config({ path: path.resolve(__dirname, '.env') })
+const fs = require('fs')
+const path = require('path')
 
 const app = express()
 app.use(express.json())
 
-console.log("MONGO_URI exists:", !!process.env.MONGO_URI)
-console.log("MONGO_URI starts with:", process.env.MONGO_URI?.substring(0, 20))
+const JOBS_FILE = path.join(__dirname, 'jobs.json')
 
-// Connect to MongoDB
-mongoose.connect(process.env.MONGO_URI)
-  .then(() => console.log('MongoDB connected!'))
-  .catch((err) => console.log('MongoDB Error:', err))
+if (!fs.existsSync(JOBS_FILE)) {
+  fs.writeFileSync(JOBS_FILE, JSON.stringify([]))
+}
 
-app.get('/', (req, res) => {
-  res.send('Job Tracker API is running')
+const getJobs = () => JSON.parse(fs.readFileSync(JOBS_FILE))
+const saveJobs = (jobs) => fs.writeFileSync(JOBS_FILE, JSON.stringify(jobs, null, 2))
+
+// Get all jobs
+app.get('/jobs', (req, res) => {
+  const jobs = getJobs()
+  res.json(jobs)
 })
 
-const PORT = process.env.PORT || 3000
+// Add a job
+app.post('/jobs', (req, res) => {
+  const jobs = getJobs()
+  const newJob = {
+    id: Date.now(),
+    company: req.body.company,
+    role: req.body.role,
+    status: req.body.status || 'Applied',
+    date: new Date().toISOString()
+  }
+  jobs.push(newJob)
+  saveJobs(jobs)
+  res.json(newJob)
+})
 
+// Update job status
+app.put('/jobs/:id', (req, res) => {
+  const jobs = getJobs()
+  const index = jobs.findIndex(j => j.id == req.params.id)
+  if (index === -1) return res.status(404).json({ message: 'Job not found' })
+  jobs[index] = { ...jobs[index], ...req.body }
+  saveJobs(jobs)
+  res.json(jobs[index])
+})
+
+// Delete a job
+app.delete('/jobs/:id', (req, res) => {
+  let jobs = getJobs()
+  jobs = jobs.filter(j => j.id != req.params.id)
+  saveJobs(jobs)
+  res.json({ message: 'Job deleted' })
+})
+
+const PORT = 3000
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`)
 })
